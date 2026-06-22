@@ -6,7 +6,12 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
+BOLD='\033[1m'
 NC='\033[0m' # No Color
+
+# Upstream (source) repository this fork was created from
+UPSTREAM_URL="https://github.com/terminal-42s/42_examshell.git"
+UPSTREAM_REMOTE="upstream"
 
 clear
 
@@ -66,6 +71,63 @@ else
     fi
     echo -e "${GREEN}✅ Pull successful${NC}"
     echo ""
+fi
+
+# ─── Sync fork with its upstream source ───
+echo -e "${BLUE}🔗 Checking upstream source...${NC}"
+
+# Add the upstream remote if it isn't configured yet
+if ! git remote get-url "$UPSTREAM_REMOTE" > /dev/null 2>&1; then
+    echo -e "${YELLOW}➕ Adding upstream remote -> $UPSTREAM_URL${NC}"
+    git remote add "$UPSTREAM_REMOTE" "$UPSTREAM_URL"
+fi
+
+echo -e "${BLUE}📥 Fetching latest changes from source...${NC}"
+if ! git fetch "$UPSTREAM_REMOTE"; then
+    echo -e "${RED}❌ Failed to fetch from upstream${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✅ Upstream fetch successful${NC}"
+echo ""
+
+if ! git rev-parse --verify "$UPSTREAM_REMOTE/$CURRENT_BRANCH" > /dev/null 2>&1; then
+    echo -e "${YELLOW}⚠️  Branch '$CURRENT_BRANCH' not found on the source — skipping sync${NC}"
+    echo ""
+else
+    BEHIND_UPSTREAM=$(git rev-list --count "HEAD..$UPSTREAM_REMOTE/$CURRENT_BRANCH" 2>/dev/null)
+    BEHIND_UPSTREAM=${BEHIND_UPSTREAM:-0}
+
+    if [ "$BEHIND_UPSTREAM" -eq 0 ]; then
+        echo -e "${GREEN}✅ Your fork is in sync with the source!${NC}"
+        echo ""
+    else
+        echo -e "${YELLOW}📦 $BEHIND_UPSTREAM new change(s) from the source${NC}"
+        echo ""
+        echo -e "${BLUE}📋 Changes from the source:${NC}"
+        git log "HEAD..$UPSTREAM_REMOTE/$CURRENT_BRANCH" --oneline | sed 's/^/   /'
+        echo ""
+
+        echo -e "${BLUE}🔀 Merging changes from the source...${NC}"
+        if ! git merge "$UPSTREAM_REMOTE/$CURRENT_BRANCH" --no-edit; then
+            echo -e "${RED}❌ Merge conflict with the source.${NC}"
+            echo -e "${YELLOW}   Resolve the conflicts manually, or run 'git merge --abort' to cancel.${NC}"
+            exit 1
+        fi
+        echo -e "${GREEN}✅ Fork synced with the source${NC}"
+        echo ""
+
+        # Offer to push the synced state back up to the fork on GitHub
+        echo -e "${CYAN}Push the synced changes to your fork (origin)? [y/N]${NC}"
+        read -r PUSH_ANSWER
+        if [[ "$PUSH_ANSWER" =~ ^[Yy]$ ]]; then
+            if git push origin "$CURRENT_BRANCH"; then
+                echo -e "${GREEN}✅ Fork updated on GitHub${NC}"
+            else
+                echo -e "${RED}❌ Failed to push to fork${NC}"
+            fi
+            echo ""
+        fi
+    fi
 fi
 
 # Update file permissions for tester scripts
